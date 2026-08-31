@@ -216,5 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-data/
+
+# Ignore data by default
+data/*
+
+# Allow raw NASA battery dataset directory
+!data/raw/
+
+# Track datasets used in this project
+!data/raw/B0005.mat
+!data/raw/B0006.mat
+
 *_backup.ipynb

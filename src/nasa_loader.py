@@ -7,20 +7,33 @@ from scipy.io import loadmat
 
 def load_nasa_battery(file_path, battery_name):
     """
-    Load a NASA battery .mat file and extract
-    cycle-level discharge information.
+    Load a NASA battery .mat file and extract discharge-level features.
 
     Parameters
     ----------
     file_path : str or Path
         Path to the NASA .mat file.
+
     battery_name : str
-        Battery identifier, e.g. "B0005".
+        Battery identifier, for example "B0005".
 
     Returns
     -------
     pandas.DataFrame
-        One row per discharge cycle.
+        One row per discharge observation.
+
+        Key indexing columns:
+        - record_index:
+            Original position of the discharge event within the complete
+            NASA experimental event sequence, which may also contain
+            charge and impedance measurements.
+
+        - discharge_cycle:
+            Sequential discharge count: 1, 2, 3, ...
+
+        - cycle:
+            Alias of discharge_cycle retained for compatibility with
+            existing analysis code.
     """
 
     file_path = Path(file_path)
@@ -42,42 +55,70 @@ def load_nasa_battery(file_path, battery_name):
 
     records = []
 
-    # NASA MATLAB files can store cycles as (1, N) or (N, 1)
+    # NASA MATLAB files may store the cycle array as (1, N) or (N, 1)
     if cycles.shape[0] == 1:
         cycle_indices = [(0, i) for i in range(cycles.shape[1])]
     else:
         cycle_indices = [(i, 0) for i in range(cycles.shape[0])]
 
-    for cycle_number, (row, col) in enumerate(cycle_indices, start=1):
+    discharge_cycle = 0
+
+    for record_index, (row, col) in enumerate(cycle_indices, start=1):
 
         cycle = cycles[row, col]
-
-        cycle_type = str(cycle["type"][0])
-        
-
-        print(cycle_number, repr(cycle_type))
+        cycle_type = str(cycle["type"][0]).strip()
 
         if cycle_type != "discharge":
             continue
 
+        discharge_cycle += 1
+
         data = cycle["data"][0, 0]
 
-        voltage = data["Voltage_measured"].flatten()
-        current = data["Current_measured"].flatten()
-        temperature = data["Temperature_measured"].flatten()
-        time = data["Time"].flatten()
-        capacity = data["Capacity"].flatten()[0]
+        voltage = np.asarray(
+            data["Voltage_measured"]
+        ).flatten()
+
+        current = np.asarray(
+            data["Current_measured"]
+        ).flatten()
+
+        temperature = np.asarray(
+            data["Temperature_measured"]
+        ).flatten()
+
+        time = np.asarray(
+            data["Time"]
+        ).flatten()
+
+        capacity = float(
+            np.asarray(data["Capacity"]).flatten()[0]
+        )
 
         records.append({
-            "cycle": cycle_number,
-            "capacity_Ah": float(capacity),
+            "record_index": record_index,
+            "discharge_cycle": discharge_cycle,
+
+            # Compatibility alias.
+            # Existing notebook cells using "cycle" will now operate
+            # on the true sequential discharge count.
+            "cycle": discharge_cycle,
+
+            "capacity_Ah": capacity,
             "avg_voltage_V": float(np.mean(voltage)),
             "min_voltage_V": float(np.min(voltage)),
             "max_voltage_V": float(np.max(voltage)),
             "avg_current_A": float(np.mean(current)),
             "avg_temperature_C": float(np.mean(temperature)),
             "max_temperature_C": float(np.max(temperature)),
-            "discharge_time_s": float(np.max(time))
+            "discharge_time_s": float(np.max(time)),
         })
 
-    return pd.DataFrame(records)
+    df = pd.DataFrame(records)
+
+    if df.empty:
+        raise ValueError(
+            f"No discharge records found for battery '{battery_name}'."
+        )
+
+    return df
