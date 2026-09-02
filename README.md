@@ -7,10 +7,24 @@ An end-to-end battery analytics and prognostics project for **State-of-Health (S
 
 ## Live Battery Intelligence Dashboard
 
+## Live Battery Intelligence Dashboard
+
+### [Launch Battery Intelligence →](https://battery-intelligence.streamlit.app/)
+
+[![Battery Intelligence Dashboard](docs/images/battery_intelligence_dashboard.png)](https://battery-intelligence.streamlit.app/)
+
 **Interactive application:**  
 https://battery-intelligence.streamlit.app/
 
 The deployed dashboard accepts battery-history CSV data and provides SOH estimation, RUL prediction, degradation trajectories, EOL diagnostics, capacity and temperature trends, input-quality checks, and model metadata.
+
+The example above shows a B0005 trajectory through discharge cycle 90:
+
+- Observed SOH: **86.50%**
+- Predicted SOH: **81.65%**
+- Reported RUL: **9.0 cycles**
+- SOH margin to the configured 80% EOL threshold: **6.50 percentage points**
+- Input quality checks: **PASS**
 
 The project is designed around a central engineering question:
 
