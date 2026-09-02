@@ -1,0 +1,4 @@
+-r requirements.txt
+
+pytest>=8.0,<10.0
+jupyter>=1.0,<2.0

@@ -1,0 +1,85 @@
+{
+  "model_version": "1.0.0",
+  "created_utc": "2026-09-02T15:50:19.300608+00:00",
+  "project": "Battery Analytics Portfolio",
+  "model_selection": {
+    "soh_model": "StandardScaler + LinearRegression",
+    "rul_model": "StandardScaler + LinearRegression",
+    "selection_basis": "Leave-one-battery-out validation in Notebook 04"
+  },
+  "training": {
+    "battery_ids": [
+      "B0005",
+      "B0006",
+      "B0007",
+      "B0018"
+    ],
+    "rul_training_rows": 333,
+    "soh_training_rows": 612
+  },
+  "feature_engineering": {
+    "causal": true,
+    "history_window_cycles": 5,
+    "feature_order": [
+      "SOH_lag1",
+      "SOH_roll_mean_5",
+      "SOH_roll_std_5",
+      "SOH_delta_5",
+      "temp_roll_mean_5",
+      "temperature_delta_5",
+      "voltage_roll_mean_5"
+    ],
+    "first_usable_discharge_cycle": 7
+  },
+  "targets": {
+    "soh": {
+      "name": "SOH_percent",
+      "unit": "percent"
+    },
+    "rul": {
+      "name": "RUL_cycles",
+      "unit": "discharge_cycles",
+      "eol_threshold_soh_percent": 80.0
+    }
+  },
+  "inference_policy": {
+    "rul_raw_output_retained": true,
+    "rul_reporting_constraint": "max(raw_rul, 0.0)",
+    "monotonic_running_minimum": false
+  },
+  "final_fit_diagnostics": {
+    "rul_raw": {
+      "MAE": 6.9501145109803755,
+      "RMSE": 8.540848217798642,
+      "R2": 0.9160630845929415,
+      "Bias": 3.41401915079928e-16
+    },
+    "rul_nonnegative": {
+      "MAE": 6.875279840576452,
+      "RMSE": 8.486950777400109,
+      "R2": 0.9171191179906593,
+      "Bias": 0.07483467040392511
+    },
+    "soh": {
+      "MAE": 0.4609953084881609,
+      "RMSE": 0.9034069471164261,
+      "R2": 0.9927799357464475,
+      "Bias": 1.4268905592306587e-14
+    }
+  },
+  "validation_note": "Final-fit diagnostics are in-sample and must not be interpreted as unseen-battery performance. Cross-battery generalization evidence is provided by leave-one-battery-out validation in Notebook 04.",
+  "limitations": [
+    "Training data contains four NASA laboratory-aged Li-ion cells.",
+    "RUL generalization is battery-regime dependent.",
+    "The 80 percent SOH EOL threshold is a modelling convention.",
+    "No validated probabilistic uncertainty interval is provided.",
+    "The model is not a certified battery safety or BMS control system."
+  ],
+  "software": {
+    "python": "3.14.5",
+    "scikit_learn": "1.9.0",
+    "joblib": "1.5.3",
+    "numpy": "2.5.1",
+    "pandas": "3.0.3"
+  }
+}

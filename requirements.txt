@@ -1,0 +1,12 @@
+numpy>=2.0,<3.0
+pandas>=2.2,<4.0
+scipy>=1.14,<2.0
+scikit-learn>=1.5,<2.0
+joblib>=1.4,<2.0
+
+matplotlib>=3.9,<4.0
+statsmodels>=0.14,<1.0
+xgboost>=2.1,<4.0
+shap>=0.46,<1.0
+
+streamlit>=1.40,<2.0
