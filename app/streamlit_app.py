@@ -1,7 +1,6 @@
 from pathlib import Path
 import sys
 
-import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -13,13 +12,46 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
+APP_DIR = PROJECT_ROOT / "app"
 MODEL_DIR = PROJECT_ROOT / "models"
 
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+for path in (SRC_DIR, APP_DIR):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
 
 from inference import BatteryPrognosticsEngine
 from prognostics import add_causal_prognostic_features
+
+from dashboard_utils import (
+    build_capacity_chart,
+    build_rul_chart,
+    build_soh_chart,
+    build_temperature_chart,
+)
+
+
+# ---------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------
+
+REQUIRED_COLUMNS = [
+    "cycle",
+    "capacity_Ah",
+    "avg_voltage_V",
+    "max_temperature_C",
+    "SOH_percent",
+]
+
+FEATURE_COLUMNS = [
+    "SOH_lag1",
+    "SOH_roll_mean_5",
+    "SOH_roll_std_5",
+    "SOH_delta_5",
+    "temp_roll_mean_5",
+    "temperature_delta_5",
+    "voltage_roll_mean_5",
+]
 
 
 # ---------------------------------------------------------------------
@@ -41,18 +73,15 @@ st.caption(
 
 
 # ---------------------------------------------------------------------
-# Load production inference engine
+# Production model
 # ---------------------------------------------------------------------
 
-engine = BatteryPrognosticsEngine(MODEL_DIR)
+@st.cache_resource
+def load_engine():
+    return BatteryPrognosticsEngine(MODEL_DIR)
 
-REQUIRED_COLUMNS = [
-    "cycle",
-    "capacity_Ah",
-    "avg_voltage_V",
-    "max_temperature_C",
-    "SOH_percent",
-]
+
+engine = load_engine()
 
 
 # ---------------------------------------------------------------------
@@ -87,8 +116,8 @@ st.sidebar.markdown("---")
 
 st.sidebar.caption(
     "The production model expects sequential discharge-cycle history "
-    "and requires at least seven observations to calculate causal "
-    "lagged and rolling features."
+    "and requires sufficient observations to calculate causal lagged "
+    "and rolling degradation features."
 )
 
 
@@ -107,15 +136,13 @@ if uploaded_file is None:
 
     with c1:
         st.markdown("### Causal Feature Engineering")
-
         st.write(
-            "RUL prediction is based on lagged and rolling battery-health "
+            "RUL prediction uses lagged and rolling battery-health "
             "indicators derived only from historical observations."
         )
 
     with c2:
         st.markdown("### Physical Reporting Constraint")
-
         st.write(
             "Raw RUL predictions are retained for diagnostics while "
             "reported RUL is constrained to remain nonnegative."
@@ -123,7 +150,6 @@ if uploaded_file is None:
 
     with c3:
         st.markdown("### End-of-Life Policy")
-
         st.write(
             f"EOL is defined at or below {engine.eol_threshold:.1f}% SOH. "
             "Once observed SOH reaches this threshold, reported RUL is "
@@ -134,23 +160,21 @@ if uploaded_file is None:
 
 
 # ---------------------------------------------------------------------
-# Read uploaded CSV
+# Read input data
 # ---------------------------------------------------------------------
 
 try:
     battery_df = pd.read_csv(uploaded_file)
 
 except Exception as exc:
-
     st.error(
         f"Unable to read CSV: {exc}"
     )
-
     st.stop()
 
 
 # ---------------------------------------------------------------------
-# Required column validation
+# Required-column validation
 # ---------------------------------------------------------------------
 
 missing_columns = [
@@ -160,101 +184,67 @@ missing_columns = [
 ]
 
 if missing_columns:
-
     st.error(
         "CSV is missing required columns: "
         + ", ".join(missing_columns)
     )
-
     st.stop()
 
 
 # ---------------------------------------------------------------------
-# Dataset quality assessment
+# Input quality summary
 # ---------------------------------------------------------------------
 
 quality_checks = {
-
-    "Rows":
-        len(battery_df),
-
-    "Missing values":
-        int(
-            battery_df[
-                REQUIRED_COLUMNS
-            ].isna().sum().sum()
-        ),
-
-    "Duplicate cycles":
-        int(
-            battery_df[
-                "cycle"
-            ].duplicated().sum()
-        ),
-
-    "Chronological":
-        bool(
-            battery_df[
-                "cycle"
-            ].is_monotonic_increasing
-        ),
+    "Rows": len(battery_df),
+    "Missing values": int(
+        battery_df[
+            REQUIRED_COLUMNS
+        ].isna().sum().sum()
+    ),
+    "Duplicate cycles": int(
+        battery_df[
+            "cycle"
+        ].duplicated().sum()
+    ),
+    "Chronological": bool(
+        battery_df[
+            "cycle"
+        ].is_monotonic_increasing
+    ),
 }
 
 quality_pass = (
-
     quality_checks["Rows"] >= 7
-
     and quality_checks["Missing values"] == 0
-
     and quality_checks["Duplicate cycles"] == 0
-
     and quality_checks["Chronological"]
 )
 
 
 # ---------------------------------------------------------------------
-# Latest prediction
+# Latest production prediction
 # ---------------------------------------------------------------------
 
 try:
-
     prediction = engine.predict(
         battery_df
     )
 
 except Exception as exc:
-
     st.error(
         f"Prediction failed: {exc}"
     )
-
     st.stop()
 
 
 # ---------------------------------------------------------------------
-# Build causal model trajectory
+# Build causal trajectory
 # ---------------------------------------------------------------------
 
 featured_df = add_causal_prognostic_features(
     battery_df
 )
-
-FEATURE_COLUMNS = [
-
-    "SOH_lag1",
-
-    "SOH_roll_mean_5",
-
-    "SOH_roll_std_5",
-
-    "SOH_delta_5",
-
-    "temp_roll_mean_5",
-
-    "temperature_delta_5",
-
-    "voltage_roll_mean_5",
-]
 
 valid_featured_df = featured_df.dropna(
     subset=FEATURE_COLUMNS
@@ -266,14 +256,10 @@ raw_rul_values = []
 reported_rul_values = []
 
 
-for i in range(
-    len(valid_featured_df)
-):
+for _, row in valid_featured_df.iterrows():
 
     current_cycle = int(
-        valid_featured_df.iloc[i][
-            "cycle"
-        ]
+        row["cycle"]
     )
 
     history = battery_df.loc[
@@ -282,11 +268,8 @@ for i in range(
     ].copy()
 
     try:
-
-        point_prediction = (
-            engine.predict(
-                history
-            )
+        point_prediction = engine.predict(
+            history
         )
 
         predicted_soh_values.append(
@@ -308,7 +291,6 @@ for i in range(
         )
 
     except Exception:
-
         predicted_soh_values.append(
             np.nan
         )
@@ -336,26 +318,8 @@ valid_featured_df[
 
 
 # ---------------------------------------------------------------------
-# Executive metrics
+# Derived dashboard metrics
 # ---------------------------------------------------------------------
-
-latest_capacity = float(
-    battery_df.iloc[-1][
-        "capacity_Ah"
-    ]
-)
-
-initial_capacity = float(
-    battery_df.iloc[0][
-        "capacity_Ah"
-    ]
-)
-
-capacity_retention = (
-    latest_capacity
-    / initial_capacity
-    * 100.0
-)
 
 soh_gap = (
     prediction[
@@ -367,14 +331,30 @@ soh_gap = (
     ]
 )
 
+soh_margin = (
+    prediction[
+        "observed_soh_percent"
+    ]
+    -
+    engine.eol_threshold
+)
+
+latest_temperature = float(
+    battery_df.iloc[-1][
+        "max_temperature_C"
+    ]
+)
+
+
+# ---------------------------------------------------------------------
+# Battery health summary
+# ---------------------------------------------------------------------
 
 st.subheader(
     "Battery Health Summary"
 )
 
-k1, k2, k3, k4, k5 = (
-    st.columns(5)
-)
+k1, k2, k3, k4, k5 = st.columns(5)
 
 
 k1.metric(
@@ -393,15 +373,14 @@ k3.metric(
     "Predicted SOH",
     f"{prediction['predicted_soh_percent']:.2f}%",
     delta=(
-        f"{-soh_gap:.2f} pp "
-        "vs observed"
+        f"{-soh_gap:.2f} pp vs observed"
     ),
 )
 
 
 k4.metric(
     "Reported RUL",
-    f"{prediction['reported_rul_cycles']:.1f}",
+    f"{prediction['reported_rul_cycles']:.1f} cycles",
     help=(
         "Estimated remaining discharge cycles "
         "before the configured EOL threshold."
@@ -410,51 +389,39 @@ k4.metric(
 
 
 k5.metric(
-    "Capacity Retention",
-    f"{capacity_retention:.2f}%",
+    "SOH Margin to EOL",
+    f"{soh_margin:.2f} pp",
+    help=(
+        "Observed SOH minus the configured "
+        "end-of-life SOH threshold."
+    ),
 )
 
 
 # ---------------------------------------------------------------------
-# Battery health status
+# Health-state message
 # ---------------------------------------------------------------------
 
 st.markdown("---")
 
 
-if prediction[
-    "eol_reached"
-]:
+if prediction["eol_reached"]:
 
     st.error(
-        "EOL threshold reached. "
-        "Reported RUL has been forced "
-        "to 0 cycles by the production "
-        "inference safeguard."
+        "Observed SOH has reached or crossed the configured EOL "
+        "threshold. Reported RUL is therefore forced to 0 cycles."
     )
-
-
-elif prediction[
-    "observed_soh_percent"
-] <= 85:
-
-    st.warning(
-        "Battery is approaching the configured "
-        "EOL region. Degradation should be "
-        "monitored closely."
-    )
-
 
 else:
 
     st.success(
-        "Battery remains above the "
-        "configured EOL threshold."
+        "Observed SOH remains above the configured EOL threshold "
+        f"by {soh_margin:.2f} percentage points."
     )
 
 
 # ---------------------------------------------------------------------
-# Data quality panel
+# Data quality
 # ---------------------------------------------------------------------
 
 with st.expander(
@@ -462,16 +429,12 @@ with st.expander(
     expanded=False,
 ):
 
-    q1, q2, q3, q4 = (
-        st.columns(4)
-    )
+    q1, q2, q3, q4 = st.columns(4)
 
 
     q1.metric(
         "Rows",
-        quality_checks[
-            "Rows"
-        ],
+        quality_checks["Rows"],
     )
 
 
@@ -504,23 +467,18 @@ with st.expander(
 
 
     if quality_pass:
-
         st.success(
-            "Input data quality "
-            "checks passed."
+            "Input data quality checks passed."
         )
 
     else:
-
         st.warning(
-            "One or more input "
-            "quality checks require "
-            "attention."
+            "One or more input quality checks require attention."
         )
 
 
 # ---------------------------------------------------------------------
-# State-of-Health analytics
+# SOH trajectory
 # ---------------------------------------------------------------------
 
 st.markdown("---")
@@ -530,216 +488,9 @@ st.subheader(
 )
 
 
-soh_plot_df = (
-    valid_featured_df[
-        [
-            "cycle",
-            "SOH_percent",
-            "predicted_SOH_percent",
-        ]
-    ]
-    .copy()
-)
-
-
-soh_long_df = (
-    soh_plot_df.melt(
-        id_vars="cycle",
-
-        value_vars=[
-            "SOH_percent",
-            "predicted_SOH_percent",
-        ],
-
-        var_name="Series",
-
-        value_name="SOH",
-    )
-)
-
-
-soh_long_df[
-    "Series"
-] = soh_long_df[
-    "Series"
-].replace(
-
-    {
-        "SOH_percent":
-            "Observed SOH",
-
-        "predicted_SOH_percent":
-            "Predicted SOH",
-    }
-)
-
-
-soh_y_min = max(
-    0,
-
-    min(
-        float(
-            soh_long_df[
-                "SOH"
-            ].min()
-        ),
-
-        engine.eol_threshold,
-    )
-    - 5,
-)
-
-
-soh_lines = (
-
-    alt.Chart(
-        soh_long_df
-    )
-
-    .mark_line(
-        strokeWidth=2.5
-    )
-
-    .encode(
-
-        x=alt.X(
-            "cycle:Q",
-            title="Discharge Cycle",
-        ),
-
-        y=alt.Y(
-            "SOH:Q",
-            title="State of Health (%)",
-            scale=alt.Scale(
-                domain=[
-                    soh_y_min,
-                    102,
-                ]
-            ),
-        ),
-
-        color=alt.Color(
-            "Series:N",
-            title=None,
-        ),
-
-        tooltip=[
-
-            alt.Tooltip(
-                "cycle:Q",
-                title="Cycle",
-                format=".0f",
-            ),
-
-            alt.Tooltip(
-                "Series:N",
-                title="Series",
-            ),
-
-            alt.Tooltip(
-                "SOH:Q",
-                title="SOH (%)",
-                format=".2f",
-            ),
-        ],
-    )
-)
-
-
-eol_rule_df = pd.DataFrame(
-
-    {
-        "EOL": [
-            engine.eol_threshold
-        ]
-    }
-)
-
-
-eol_rule = (
-
-    alt.Chart(
-        eol_rule_df
-    )
-
-    .mark_rule(
-        strokeDash=[
-            8,
-            5,
-        ],
-        size=2,
-    )
-
-    .encode(
-        y="EOL:Q"
-    )
-)
-
-
-eol_label_df = pd.DataFrame(
-
-    {
-        "cycle": [
-            float(
-                soh_plot_df[
-                    "cycle"
-                ].min()
-            )
-        ],
-
-        "EOL": [
-            engine.eol_threshold
-        ],
-
-        "label": [
-            (
-                "EOL Threshold "
-                f"({engine.eol_threshold:.0f}% SOH)"
-            )
-        ],
-    }
-)
-
-
-eol_label = (
-
-    alt.Chart(
-        eol_label_df
-    )
-
-    .mark_text(
-        align="left",
-        baseline="bottom",
-        dx=5,
-        dy=-5,
-    )
-
-    .encode(
-
-        x="cycle:Q",
-
-        y="EOL:Q",
-
-        text="label:N",
-    )
-)
-
-
-soh_chart = (
-
-    (
-        soh_lines
-        +
-        eol_rule
-        +
-        eol_label
-    )
-
-    .properties(
-        height=420
-    )
-
-    .interactive()
+soh_chart = build_soh_chart(
+    valid_featured_df,
+    engine.eol_threshold,
 )
 
 
@@ -757,7 +508,7 @@ st.caption(
 
 
 # ---------------------------------------------------------------------
-# Remaining Useful Life trajectory
+# RUL trajectory
 # ---------------------------------------------------------------------
 
 st.markdown("---")
@@ -767,107 +518,8 @@ st.subheader(
 )
 
 
-rul_plot_df = (
-
-    valid_featured_df[
-        [
-            "cycle",
-            "raw_RUL_cycles",
-            "reported_RUL_cycles",
-        ]
-    ]
-
-    .copy()
-)
-
-
-rul_long_df = (
-
-    rul_plot_df.melt(
-
-        id_vars="cycle",
-
-        value_vars=[
-            "raw_RUL_cycles",
-            "reported_RUL_cycles",
-        ],
-
-        var_name="Series",
-
-        value_name="RUL",
-    )
-)
-
-
-rul_long_df[
-    "Series"
-] = rul_long_df[
-    "Series"
-].replace(
-
-    {
-        "raw_RUL_cycles":
-            "Raw RUL",
-
-        "reported_RUL_cycles":
-            "Reported RUL",
-    }
-)
-
-
-rul_chart = (
-
-    alt.Chart(
-        rul_long_df
-    )
-
-    .mark_line(
-        strokeWidth=2.5
-    )
-
-    .encode(
-
-        x=alt.X(
-            "cycle:Q",
-            title="Discharge Cycle",
-        ),
-
-        y=alt.Y(
-            "RUL:Q",
-            title="Remaining Useful Life (cycles)",
-        ),
-
-        color=alt.Color(
-            "Series:N",
-            title=None,
-        ),
-
-        tooltip=[
-
-            alt.Tooltip(
-                "cycle:Q",
-                title="Cycle",
-                format=".0f",
-            ),
-
-            alt.Tooltip(
-                "Series:N",
-                title="Series",
-            ),
-
-            alt.Tooltip(
-                "RUL:Q",
-                title="RUL",
-                format=".2f",
-            ),
-        ],
-    )
-
-    .properties(
-        height=420
-    )
-
-    .interactive()
+rul_chart = build_rul_chart(
+    valid_featured_df
 )
 
 
@@ -879,8 +531,8 @@ st.altair_chart(
 
 st.caption(
     "Raw RUL is preserved for model diagnostics. "
-    "Reported RUL applies the nonnegative reporting constraint "
-    "and the observed-SOH EOL safeguard."
+    "Reported RUL applies the nonnegative constraint "
+    "and observed-SOH EOL safeguard."
 )
 
 
@@ -894,15 +546,8 @@ st.subheader(
     "Engineering Diagnostics"
 )
 
+left, right = st.columns(2)
 
-left, right = (
-    st.columns(2)
-)
-
-
-# ---------------------------------------------------------------------
-# Capacity degradation
-# ---------------------------------------------------------------------
 
 with left:
 
@@ -910,65 +555,13 @@ with left:
         "#### Capacity Degradation"
     )
 
-
-    capacity_chart = (
-
-        alt.Chart(
-            battery_df
-        )
-
-        .mark_line(
-            strokeWidth=2.5
-        )
-
-        .encode(
-
-            x=alt.X(
-                "cycle:Q",
-                title="Discharge Cycle",
-            ),
-
-            y=alt.Y(
-                "capacity_Ah:Q",
-                title="Capacity (Ah)",
-                scale=alt.Scale(
-                    zero=False
-                ),
-            ),
-
-            tooltip=[
-
-                alt.Tooltip(
-                    "cycle:Q",
-                    title="Cycle",
-                    format=".0f",
-                ),
-
-                alt.Tooltip(
-                    "capacity_Ah:Q",
-                    title="Capacity (Ah)",
-                    format=".4f",
-                ),
-            ],
-        )
-
-        .properties(
-            height=330
-        )
-
-        .interactive()
-    )
-
-
     st.altair_chart(
-        capacity_chart,
+        build_capacity_chart(
+            battery_df
+        ),
         use_container_width=True,
     )
 
-
-# ---------------------------------------------------------------------
-# Temperature diagnostics
-# ---------------------------------------------------------------------
 
 with right:
 
@@ -976,60 +569,18 @@ with right:
         "#### Maximum Cell Temperature"
     )
 
-
-    temperature_chart = (
-
-        alt.Chart(
-            battery_df
-        )
-
-        .mark_line(
-            strokeWidth=2.5
-        )
-
-        .encode(
-
-            x=alt.X(
-                "cycle:Q",
-                title="Discharge Cycle",
-            ),
-
-            y=alt.Y(
-                "max_temperature_C:Q",
-                title="Maximum Temperature (°C)",
-                scale=alt.Scale(
-                    zero=False
-                ),
-            ),
-
-            tooltip=[
-
-                alt.Tooltip(
-                    "cycle:Q",
-                    title="Cycle",
-                    format=".0f",
-                ),
-
-                alt.Tooltip(
-                    "max_temperature_C:Q",
-                    title="Temperature (°C)",
-                    format=".2f",
-                ),
-            ],
-        )
-
-        .properties(
-            height=330
-        )
-
-        .interactive()
-    )
-
-
     st.altair_chart(
-        temperature_chart,
+        build_temperature_chart(
+            battery_df
+        ),
         use_container_width=True,
     )
+
+
+st.caption(
+    f"Latest recorded maximum cell temperature: "
+    f"{latest_temperature:.2f} °C."
+)
 
 
 # ---------------------------------------------------------------------
@@ -1044,62 +595,45 @@ st.subheader(
 
 
 diagnostic_df = pd.DataFrame(
-
     {
         "Metric": [
-
             "Cycle",
-
             "Observed SOH",
-
             "Predicted SOH",
-
-            "SOH residual",
-
+            "Observed − Predicted SOH",
+            "SOH margin to EOL",
             "Raw RUL",
-
             "Reported RUL",
-
             "EOL threshold",
-
             "EOL reached",
-
             "Model version",
         ],
-
         "Value": [
-
             f"{prediction['cycle']:.0f}",
-
             (
                 f"{prediction['observed_soh_percent']:.3f}%"
             ),
-
             (
                 f"{prediction['predicted_soh_percent']:.3f}%"
             ),
-
             (
-                f"{soh_gap:+.3f} "
-                "percentage points"
+                f"{soh_gap:+.3f} percentage points"
             ),
-
+            (
+                f"{soh_margin:+.3f} percentage points"
+            ),
             (
                 f"{prediction['raw_rul_cycles']:.3f} cycles"
             ),
-
             (
                 f"{prediction['reported_rul_cycles']:.3f} cycles"
             ),
-
             (
                 f"{prediction['eol_threshold_soh_percent']:.1f}%"
             ),
-
             prediction[
                 "eol_reached"
             ],
-
             prediction[
                 "model_version"
             ],
@@ -1131,7 +665,7 @@ with st.expander(
 
 
 # ---------------------------------------------------------------------
-# Methodology and limitations
+# Methodology and deployment limitations
 # ---------------------------------------------------------------------
 
 with st.expander(
@@ -1172,11 +706,11 @@ additional unseen fifth-cell validation dataset.
 
 A probabilistic confidence interval is intentionally not displayed.
 
-Earlier chronological conformal experiments did not provide reliable
-coverage under battery degradation regime shift.
+Chronological conformal experiments did not provide reliable coverage
+under battery degradation regime shift.
 
-Displaying such intervals here would therefore imply more confidence
-than the validation evidence supports.
+Displaying such intervals here would imply more confidence than the
+validation evidence supports.
 
 ### Interpretation
 
