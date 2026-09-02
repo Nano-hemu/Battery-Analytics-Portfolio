@@ -200,3 +200,5 @@ models/tmp/
 *.temp
 .DS_Store
 Thumbs.db
+# Local dashboard test exports
+*_dashboard_test.csv

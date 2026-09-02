@@ -32,3 +32,6 @@ jobs:
       - name: Run portable inference tests
         run: |
           pytest -q tests/test_inference_synthetic.py
+      - name: Run portable tests
+        run: |
+          pytest -q tests/test_inference_synthetic.py tests/test_streamlit_app.py
