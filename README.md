@@ -2,6 +2,16 @@
 
 An end-to-end battery analytics and prognostics project for **State-of-Health (SOH) estimation, Remaining Useful Life (RUL) prediction, degradation analysis, cross-battery validation, explainability, and production-oriented inference** using the NASA lithium-ion battery ageing dataset.
 
+[![Live Dashboard](https://img.shields.io/badge/Live%20Dashboard-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://battery-intelligence.streamlit.app/)
+[![CI](https://github.com/Nano-hemu/Battery-Analytics-Portfolio/actions/workflows/tests.yml/badge.svg)](https://github.com/Nano-hemu/Battery-Analytics-Portfolio/actions/workflows/tests.yml)
+
+## Live Battery Intelligence Dashboard
+
+**Interactive application:**  
+https://battery-intelligence.streamlit.app/
+
+The deployed dashboard accepts battery-history CSV data and provides SOH estimation, RUL prediction, degradation trajectories, EOL diagnostics, capacity and temperature trends, input-quality checks, and model metadata.
+
 The project is designed around a central engineering question:
 
 > **Can battery degradation history be converted into a causal, transferable, and operationally defensible estimate of battery health and remaining useful life?**
@@ -38,7 +48,7 @@ Rather than optimizing only for a high in-sample score, this repository emphasiz
 | Production | Serialized SOH/RUL models + inference engine |
 | Dashboard | Streamlit battery intelligence interface |
 | Software quality | Pytest + GitHub Actions CI |
-| Battery modelling stack | Python, pandas, NumPy, SciPy, scikit-learn, SHAP, Statsmodels, XGBoost |
+| Stack | Python, pandas, NumPy, SciPy, scikit-learn, SHAP, Statsmodels, XGBoost, Streamlit |
 
 ---
 
@@ -87,13 +97,7 @@ data/
     └── B0018.mat
 ```
 
-See:
-
-```text
-data/README.md
-```
-
-for dataset acquisition and local setup instructions.
+See [`data/README.md`](data/README.md) for dataset acquisition, indexing methodology, EOL definition, and local setup instructions.
 
 ---
 
@@ -138,7 +142,7 @@ SOH_t = \frac{Q_t}{Q_0}\times100
 where:
 
 - \(Q_t\) = measured discharge capacity at cycle \(t\)
-- \(Q_0\) = initial discharge capacity
+- \(Q_0\) = initial measured discharge capacity
 
 The project uses a fixed engineering EOL criterion:
 
@@ -176,7 +180,7 @@ Therefore:
 
 > **Cycle number is deliberately excluded from the deployable RUL feature set.**
 
-The same reasoning is applied to current SOH and current capacity: the RUL model is designed to rely on historical health information rather than directly using variables that strongly encode the target construction.
+The same reasoning is applied to current SOH and current capacity. The RUL model is designed to rely on historical health information rather than directly using variables that strongly encode target construction.
 
 ---
 
@@ -261,8 +265,6 @@ Models investigated include:
 - trajectory-based degradation models
 
 A major result of the project is that **simpler linear models generalized better than tree ensembles for the final multi-battery RUL problem**.
-
-This is an important modelling lesson:
 
 > Model complexity is not a substitute for validation across degradation regimes.
 
@@ -358,12 +360,12 @@ This illustrates why isolated instantaneous measurements can be misleading durin
 
 The four cells show substantially different degradation trajectories.
 
-| Battery | Discharge observations | Observed EOL cycle |
-|---|---:|---:|
-| B0005 | 168 | 101 |
-| B0006 | 168 | 61 |
-| B0007 | — | 124 |
-| B0018 | — | 75 |
+| Battery | Observed EOL cycle |
+|---|---:|
+| B0005 | 101 |
+| B0006 | 61 |
+| B0007 | 124 |
+| B0018 | 75 |
 
 The observed EOL spread across the cells is:
 
@@ -385,9 +387,7 @@ For each fold:
 2. one complete battery is withheld,
 3. the model predicts the unseen battery trajectory.
 
-This tests whether the learned degradation relationships transfer between cells.
-
----
+This tests whether learned degradation relationships transfer between cells.
 
 ## RUL Results
 
@@ -450,8 +450,6 @@ For example:
 
 Simple min/max feature checks and standardized-distance metrics were therefore insufficient as reliable confidence indicators.
 
-This suggests a broader issue:
-
 > **Battery prognostic uncertainty is driven by degradation-regime shift, not merely geometric distance in feature space.**
 
 ---
@@ -497,8 +495,6 @@ achieved only approximately:
 in the tested chronological setting.
 
 Therefore the project deliberately does **not** expose those intervals in the production dashboard.
-
-This is intentional.
 
 A narrow uncertainty interval is not useful if its empirical coverage is unreliable.
 
@@ -620,6 +616,8 @@ It should be interpreted as **model-state disagreement**, not automatically as s
 
 # 20. Streamlit Battery Intelligence Dashboard
 
+### [Launch the Live Dashboard →](https://battery-intelligence.streamlit.app/)
+
 The repository includes an interactive engineering dashboard:
 
 ```text
@@ -664,7 +662,7 @@ Battery-Analytics-Portfolio/
 │
 ├── data/
 │   ├── raw/
-│   │   └── NASA .mat files
+│   │   └── NASA .mat files — local only, not version controlled
 │   └── README.md
 │
 ├── models/
@@ -718,8 +716,6 @@ Focus:
 - instantaneous health models,
 - leakage diagnostics.
 
----
-
 ## Notebook 02 — Causal SOH & RUL Modelling
 
 Focus:
@@ -731,8 +727,6 @@ Focus:
 - nonnegative RUL constraint,
 - cross-battery transfer diagnostics.
 
----
-
 ## Notebook 03 — Advanced Battery Prognostics
 
 Focus:
@@ -741,8 +735,6 @@ Focus:
 - chronological uncertainty estimation,
 - conformal prediction,
 - regime-shift failure analysis.
-
----
 
 ## Notebook 04 — Multi-Battery Validation & SHAP
 
@@ -755,8 +747,6 @@ Focus:
 - SHAP interpretation,
 - monotonic postprocessing experiments,
 - SOH vs RUL generalization.
-
----
 
 ## Notebook 05 — Production Battery Prognostics
 
@@ -783,14 +773,14 @@ cd Battery-Analytics-Portfolio
 
 Create a virtual environment.
 
-Windows:
+### Windows — Git Bash
 
 ```bash
 python -m venv .venv
 source .venv/Scripts/activate
 ```
 
-Linux/macOS:
+### Linux/macOS
 
 ```bash
 python -m venv .venv
@@ -820,7 +810,13 @@ Run the complete local test suite:
 pytest -q
 ```
 
-Tests cover:
+The current project test suite contains:
+
+```text
+14 passing tests
+```
+
+covering:
 
 - model loading,
 - metadata validation,
@@ -830,7 +826,7 @@ Tests cover:
 - EOL safeguard,
 - malformed input,
 - synthetic inference behaviour,
-- and Streamlit application compilation.
+- and dashboard module compilation.
 
 Raw NASA data is intentionally excluded from the repository.
 
@@ -848,7 +844,7 @@ Workflow:
 .github/workflows/tests.yml
 ```
 
-The CI pipeline verifies the production inference path and Streamlit application compilation in a clean environment.
+The current workflow is configured to test the production inference path and dashboard code in a clean environment.
 
 ---
 
@@ -875,7 +871,7 @@ The CI pipeline verifies the production inference path and Streamlit application
 
 - SHAP
 
-### Visualization
+### Visualization & Application
 
 - Matplotlib
 - Altair
@@ -1047,6 +1043,12 @@ Interactive engineering dashboard
 The central conclusion is:
 
 > **Reliable battery prognostics requires more than predictive accuracy. It requires correct target construction, causal feature design, cross-cell validation, explicit treatment of degradation-regime shift, physically defensible output constraints, and transparent communication of model limitations.**
+
+---
+
+## Live Application
+
+### [Battery Intelligence Dashboard →](https://battery-intelligence.streamlit.app/)
 
 ---
 
