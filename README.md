@@ -222,65 +222,71 @@ These features are constructed from battery history so that the prognostic model
 
 The previous measured State of Health is:
 
-$$
-SOH_{\mathrm{lag1}}(t) = SOH(t-1)
-$$
+```text
+SOH_lag1(t) = SOH(t − 1)
+```
 
 This gives the model the most recent available battery-health state without using the current-cycle SOH directly as an RUL predictor.
 
 #### Rolling SOH Mean
 
-For a historical window of length \(w\):
+For a historical window of length `w`:
 
-$$
-\overline{SOH}_{t,w}
-=
-\frac{1}{w}
-\sum_{i=t-w}^{t-1} SOH_i
-$$
+```text
+SOH_roll_mean(t,w) = (1/w) × Σ SOHᵢ
+                              i=t−w,...,t−1
+```
+
+Conceptually,
+
+```text
+SOH_roll_mean(t,w)
+    = [SOH(t−w) + ... + SOH(t−2) + SOH(t−1)] / w
+```
 
 The rolling mean represents the recent local health level while reducing sensitivity to individual-cycle fluctuations.
 
 #### Rolling SOH Variability
 
-The historical SOH variability is represented by:
+Historical SOH variability is represented by the sample standard deviation over the same causal window:
 
-$$
-\sigma_{SOH,t,w}
-=
-\sqrt{
-\frac{1}{w-1}
-\sum_{i=t-w}^{t-1}
-\left(SOH_i-\overline{SOH}_{t,w}\right)^2
-}
-$$
+```text
+SOH_roll_std(t,w)
+    = √{ Σ[SOHᵢ − SOH_roll_mean(t,w)]² / (w − 1) }
 
-This feature quantifies short-term variability around the recent degradation trajectory.
+      for i = t−w,...,t−1
+```
+
+This feature measures short-term variability around the recent degradation trajectory. A larger value indicates that recent SOH observations are fluctuating more strongly around their local mean.
 
 #### SOH Degradation Delta
 
-The change in SOH across the historical window is represented conceptually as:
+The recent change in SOH is represented conceptually as:
 
-$$
-\Delta SOH_{t,w}
-=
-SOH_{t-1}-SOH_{t-w}
-$$
+```text
+SOH_delta(t,w) = SOH(t−1) − SOH(t−w)
+```
 
-It provides information about the recent direction and magnitude of degradation.
+This feature captures the direction and magnitude of recent movement in the health trajectory.
 
 ### Thermal-History Features
 
 The model also uses historical temperature behaviour:
 
-- rolling mean of maximum temperature,
-- recent temperature change.
+- `temp_roll_mean_5` — recent rolling mean of maximum temperature.
+- `temperature_delta_5` — recent change in maximum temperature.
 
-These features provide information about changes in thermal operating behaviour associated with ageing and test conditions.
+These features provide information about changes in thermal operating behaviour associated with ageing and experimental conditions.
 
 ### Voltage-History Features
 
-A rolling voltage statistic summarizes recent discharge-voltage behaviour and provides an additional indicator of changing battery condition.
+The feature:
+
+```text
+voltage_roll_mean_5
+```
+
+summarizes recent discharge-voltage behaviour and provides an additional indicator of changing battery condition.
 
 For the production model:
 
@@ -290,7 +296,7 @@ Historical feature window = 5 discharge observations
 
 The central design principle is:
 
-> **RUL at cycle \(t\) should be estimated from information available before the prediction point, rather than from future degradation observations or variables that directly reconstruct the target.**
+> **RUL at cycle t should be estimated from information available before the prediction point, rather than from future degradation observations or variables that directly reconstruct the target.**
 
 ---
 
