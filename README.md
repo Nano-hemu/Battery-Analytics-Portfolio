@@ -149,9 +149,9 @@ This distinction prevents incorrect ageing timelines and incorrect EOL/RUL calcu
 
 State of Health is defined from discharge capacity relative to initial measured capacity:
 
-\[
-SOH_t = \frac{Q_t}{Q_0}\times100
-\]
+$$
+SOH_t = \frac{Q_t}{Q_0} \times 100
+$$
 
 where:
 
@@ -160,17 +160,17 @@ where:
 
 The project uses a fixed engineering EOL criterion:
 
-\[
+$$
 SOH \leq 80\%
-\]
+$$
 
 The observed EOL cycle is the first measured discharge cycle satisfying this condition.
 
 For observations before EOL:
 
-\[
-RUL_t = EOL_{cycle} - t
-\]
+$$
+RUL_t = EOL_{\mathrm{cycle}} - t
+$$
 
 This definition is used consistently across the modelling pipeline.
 
@@ -182,9 +182,9 @@ A naive RUL model can appear nearly perfect if cycle number is included.
 
 Because:
 
-\[
-RUL_t = EOL_{cycle} - cycle_t
-\]
+$$
+RUL_t = EOL_{\mathrm{cycle}} - cycle_t
+$$
 
 once the EOL cycle is known, cycle number almost reconstructs the target directly.
 
@@ -214,54 +214,83 @@ The deployable prognostic feature set is:
 ]
 ```
 
-These features summarize information available from battery history through approximately \(t-1\).
+These features are constructed from battery history so that the prognostic model uses historical degradation information rather than future observations.
 
-### Health-history features
+### Health-History Features
 
-**Previous SOH**
+#### Previous SOH
 
-\[
-SOH_{lag1}(t)=SOH(t-1)
-\]
+The previous measured State of Health is:
 
-**Rolling SOH mean**
+$$
+SOH_{\mathrm{lag1}}(t) = SOH(t-1)
+$$
 
-\[
+This gives the model the most recent available battery-health state without using the current-cycle SOH directly as an RUL predictor.
+
+#### Rolling SOH Mean
+
+For a historical window of length \(w\):
+
+$$
 \overline{SOH}_{t,w}
 =
 \frac{1}{w}
 \sum_{i=t-w}^{t-1} SOH_i
-\]
+$$
 
-**Rolling SOH variability**
+The rolling mean represents the recent local health level while reducing sensitivity to individual-cycle fluctuations.
 
-\[
+#### Rolling SOH Variability
+
+The historical SOH variability is represented by:
+
+$$
 \sigma_{SOH,t,w}
 =
 \sqrt{
 \frac{1}{w-1}
 \sum_{i=t-w}^{t-1}
-(SOH_i-\overline{SOH})^2
+\left(SOH_i-\overline{SOH}_{t,w}\right)^2
 }
-\]
+$$
 
-**SOH degradation delta**
+This feature quantifies short-term variability around the recent degradation trajectory.
 
-captures recent movement in the degradation trajectory.
+#### SOH Degradation Delta
 
-### Thermal-history features
+The change in SOH across the historical window is represented conceptually as:
 
-Rolling temperature and temperature-change features capture changes in thermal operating behaviour associated with ageing and test conditions.
+$$
+\Delta SOH_{t,w}
+=
+SOH_{t-1}-SOH_{t-w}
+$$
 
-### Voltage-history features
+It provides information about the recent direction and magnitude of degradation.
 
-Rolling voltage statistics provide additional information about changing discharge behaviour.
+### Thermal-History Features
 
-The production feature window is:
+The model also uses historical temperature behaviour:
+
+- rolling mean of maximum temperature,
+- recent temperature change.
+
+These features provide information about changes in thermal operating behaviour associated with ageing and test conditions.
+
+### Voltage-History Features
+
+A rolling voltage statistic summarizes recent discharge-voltage behaviour and provides an additional indicator of changing battery condition.
+
+For the production model:
 
 ```text
-5 discharge observations
+Historical feature window = 5 discharge observations
 ```
+
+The central design principle is:
+
+> **RUL at cycle \(t\) should be estimated from information available before the prediction point, rather than from future degradation observations or variables that directly reconstruct the target.**
 
 ---
 
@@ -480,9 +509,9 @@ Therefore it was **not adopted as the default production behaviour**.
 
 The production layer applies only the defensible physical constraint:
 
-\[
-RUL_{reported}=\max(0,RUL_{raw})
-\]
+$$
+RUL_{\mathrm{reported}} = \max(0, RUL_{\mathrm{raw}})
+$$
 
 and additionally forces reported RUL to zero when observed SOH has reached the configured EOL threshold.
 
